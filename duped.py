@@ -13,7 +13,7 @@ def hasher(filename):
         return None, filename
 
 
-def dirs_and_files(topdir, skip_empty, skip_dirs):
+def dirs_and_files(topdir, skip_empty, skip_dirs, verbose):
     dir_list, file_list = [], []
     if os.access(topdir, os.X_OK | os.R_OK):
         with os.scandir(topdir) as entry_list:
@@ -31,7 +31,7 @@ def dirs_and_files(topdir, skip_empty, skip_dirs):
     return dir_list, file_list
 
 
-def generate_file_list(directories, skip_empty, skip_dirs):
+def generate_file_list(directories, skip_empty, skip_dirs, verbose):
     dir_list, file_list = directories, []
     while True:
         try:
@@ -39,7 +39,7 @@ def generate_file_list(directories, skip_empty, skip_dirs):
         except IndexError:
             break
         directory, filename = dirs_and_files(
-            working_dir, skip_empty, skip_dirs)
+            working_dir, skip_empty, skip_dirs, verbose)
         dir_list.extend(directory)
         file_list.extend(filename)
     return file_list
@@ -93,8 +93,10 @@ args = parser.parse_args()
 if args.verbose:
     print(args)
 
+directories = [os.path.normpath(directory) for directory in args.directories]
+
 print("building file list")
-file_list = generate_file_list(args.directories, args.no_empty, args.skip)
+file_list = generate_file_list(directories, args.no_empty, args.skip, args.verbose)
 
 print("processing {} files".format(len(file_list)))
 with Pool(processes=args.procs) as pool:
