@@ -1,0 +1,11 @@
+Simple tool for identifying duplicate files and providing a list of files to delete based on your specifications.  This tool does not perform any file removal of it's own.
+
+For example, you may have at some point made multiple copies of your home directory as a backup and now wish to remove from a specific directory any duplicate files that may exist across those copies:
+
+./duped.py --auto-delete backup1 ./backup1 ./backup2 ./backup3
+
+The tool with then look in the ./backup[1-3] directories and find all duplicate files and any of those duplicate files that exist in the ./backup1 directory will be listed in the delete file list that the tool produces.  You can then review that list of files and use xargs and rm to manually remove them.  You can even specify multiple auto delete directories so that you only retain one unique file across those three directories:
+
+./duped.py --auto-delete backup1 --auto-delete backup2 ./backup1 ./backup2 ./backup3
+
+This tool was made for my specific use but is provided in case it's useful for anyone else.  Since it's a first draft it's very likely to change significantly in it's usage going forward.
