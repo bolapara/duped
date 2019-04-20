@@ -90,7 +90,7 @@ skip_dirs = [os.path.normpath(directory) for directory in args.skip]
 
 print("building file list")
 file_list, error_list = generate_file_list(
-    directories, args.no_empty, args.skip)
+    directories, args.no_empty, skip_dirs)
 
 print("processing {} files".format(len(file_list)))
 with Pool(processes=args.procs) as pool:
