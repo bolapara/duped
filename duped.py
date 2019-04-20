@@ -22,10 +22,9 @@ def generate_file_list(directories, skip_empty, skip_dirs):
     file_list, error_list = [], []
 
     for topdir in directories:
-        for path, dirs, filenames in os.walk(topdir,
-                                             onerror=lambda e: error_list.append(
-                                                 e.filename),
-                                             topdown=True):
+        for path, dirs, filenames in os.walk(
+            topdir, onerror=lambda e: error_list.append(
+                e.filename), topdown=True):
             for directory in dirs:
                 if directory in skip_dirs:
                     del dirs[dirs.index(directory)]
@@ -61,8 +60,7 @@ def decider(hash_dict, auto_delete_list):
                     filename for filename in files if filename.startswith(auto_delete_prefix)
                 ])
             new_keep_files = [
-                filename for filename in files if filename not in new_delete_files
-            ]
+                filename for filename in files if filename not in new_delete_files]
             if not new_keep_files:
                 new_keep_files.append(new_delete_files.pop())
         else:
