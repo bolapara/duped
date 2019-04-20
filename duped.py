@@ -22,10 +22,13 @@ def generate_file_list(directories, skip_empty, skip_dirs):
     file_list, error_list = [], []
 
     for topdir in directories:
-        for path, _, filenames in os.walk(topdir,
-                                          onerror=lambda e: error_list.append(e.filename)):
-            if os.path.basename(path) in skip_dirs:
-                continue
+        for path, dirs, filenames in os.walk(topdir,
+                                             onerror=lambda e: error_list.append(
+                                                 e.filename),
+                                             topdown=True):
+            for directory in dirs:
+                if directory in skip_dirs:
+                    del dirs[dirs.index(directory)]
             for filename in filenames:
                 fullpath = os.path.join(path, filename)
                 if os.path.isfile(fullpath):
@@ -86,11 +89,11 @@ if args.verbose:
     print(args)
 
 directories = [os.path.normpath(directory) for directory in args.directories]
-skip_dirs = [os.path.normpath(directory) for directory in args.skip]
+delete_dirs = [os.path.normpath(directory) for directory in args.auto_delete]
 
 print("building file list")
 file_list, error_list = generate_file_list(
-    directories, args.no_empty, skip_dirs)
+    directories, args.no_empty, args.skip)
 
 print("processing {} files".format(len(file_list)))
 with Pool(processes=args.procs) as pool:
@@ -100,7 +103,7 @@ print("parsing")
 hash_dict, error_list = hash_list_to_dict(hash_list)
 
 print("being the decider")
-keep_list, delete_list = decider(hash_dict, args.auto_delete)
+keep_list, delete_list = decider(hash_dict, delete_dirs)
 
 print("writing out results")
 extension = str(os.getpid())
