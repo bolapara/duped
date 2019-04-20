@@ -2,47 +2,39 @@
 import argparse
 import hashlib
 import os
+import sys
 from multiprocessing import cpu_count, Pool
 
 
 def hasher(filename):
     try:
         with open(filename, 'rb') as fobj:
-            return hashlib.md5(fobj.read()).hexdigest(), filename
-    except (PermissionError, FileNotFoundError):
-        return None, filename
+            result = hashlib.md5(fobj.read()).hexdigest()
+    except (PermissionError, FileNotFoundError) as e:
+        result = None
+    except Exception as e:
+        print("Unhandled error: {}".format(e), file=sys.stderr)
+        result = None
+    return result, filename
 
 
-def dirs_and_files(topdir, skip_empty, skip_dirs, verbose):
-    dir_list, file_list = [], []
-    if os.access(topdir, os.X_OK | os.R_OK):
-        with os.scandir(topdir) as entry_list:
-            for dir_entry in entry_list:
-                if dir_entry.is_symlink():
-                    continue
-                if dir_entry.is_file():
-                    if skip_empty and dir_entry.stat().st_size == 0:
+def generate_file_list(directories, skip_empty, skip_dirs):
+    file_list, error_list = [], []
+
+    for topdir in directories:
+        for path, _, filenames in os.walk(topdir,
+                                          onerror=lambda e: error_list.append(e.filename)):
+            if os.path.basename(path) in skip_dirs:
+                continue
+            for filename in filenames:
+                fullpath = os.path.join(path, filename)
+                if os.path.isfile(fullpath):
+                    if os.path.islink(fullpath):
                         continue
-                    file_list.append(os.path.join(topdir, dir_entry.name))
-                elif dir_entry.is_dir():
-                    if dir_entry.name in skip_dirs:
+                    if skip_empty and os.path.getsize(fullpath) == 0:
                         continue
-                    dir_list.append(os.path.join(topdir, dir_entry.name))
-    return dir_list, file_list
-
-
-def generate_file_list(directories, skip_empty, skip_dirs, verbose):
-    dir_list, file_list = directories, []
-    while True:
-        try:
-            working_dir = dir_list.pop()
-        except IndexError:
-            break
-        directory, filename = dirs_and_files(
-            working_dir, skip_empty, skip_dirs, verbose)
-        dir_list.extend(directory)
-        file_list.extend(filename)
-    return file_list
+                    file_list.append(fullpath)
+    return file_list, error_list
 
 
 def hash_list_to_dict(hash_list):
@@ -94,9 +86,11 @@ if args.verbose:
     print(args)
 
 directories = [os.path.normpath(directory) for directory in args.directories]
+skip_dirs = [os.path.normpath(directory) for directory in args.skip]
 
 print("building file list")
-file_list = generate_file_list(directories, args.no_empty, args.skip, args.verbose)
+file_list, error_list = generate_file_list(
+    directories, args.no_empty, args.skip)
 
 print("processing {} files".format(len(file_list)))
 with Pool(processes=args.procs) as pool:
