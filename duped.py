@@ -25,12 +25,9 @@ def hasher(filename):
 
 
 def generate_file_list(directories, skip_empty, skip_dirs):
-    file_list, error_list = [], []
-
     for topdir in directories:
         for path, dirs, filenames in os.walk(
-            topdir, onerror=lambda e: error_list.append(
-                e.filename), topdown=True):
+                topdir, onerror=lambda e: print(e, file=sys.stderr)):
             for directory in dirs:
                 if directory in skip_dirs:
                     del dirs[dirs.index(directory)]
@@ -41,18 +38,7 @@ def generate_file_list(directories, skip_empty, skip_dirs):
                         continue
                     if skip_empty and os.path.getsize(fullpath) == 0:
                         continue
-                    file_list.append(fullpath)
-    return file_list, error_list
-
-
-def hash_list_to_dict(hash_list):
-    hash_dict, error_list = {}, []
-    for file_hash, filename in hash_list:
-        if not file_hash:
-            error_list.append(filename)
-        hashes = hash_dict.setdefault(file_hash, [])
-        hashes.append(filename)
-    return hash_dict, error_list
+                    yield fullpath
 
 
 def decider(hash_dict, auto_delete_list):
@@ -95,18 +81,26 @@ if args.verbose:
 directories = [os.path.normpath(directory) for directory in args.directories]
 delete_dirs = [os.path.normpath(directory) for directory in args.auto_delete]
 
-print("building file list")
-file_list, error_list = generate_file_list(
-    directories, args.no_empty, args.skip)
-
-print("processing {} files".format(len(file_list)))
+print("processing files")
+hash_dict, error_list = {}, []
 with Pool(processes=args.procs) as pool:
-    hash_list = pool.map(hasher, file_list)
+    count = 0
+    for file_hash, filename in pool.imap_unordered(
+            hasher,
+            generate_file_list(
+                directories,
+                args.no_empty,
+                args.skip),
+            100):
+        if not file_hash:
+            error_list.append(filename)
+        hashes = hash_dict.setdefault(file_hash, [])
+        hashes.append(filename)
+        count += 1
+        print('\r{}'.format(count), end='', flush=True)
+    print()
 
-print("parsing")
-hash_dict, error_list = hash_list_to_dict(hash_list)
-
-print("being the decider")
+print("analyzing files")
 keep_list, delete_list = decider(hash_dict, delete_dirs)
 
 print("writing out results")
