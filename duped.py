@@ -7,9 +7,15 @@ from multiprocessing import cpu_count, Pool
 
 
 def hasher(filename):
+    hash_func = hashlib.md5()
     try:
         with open(filename, 'rb') as fobj:
-            result = hashlib.md5(fobj.read()).hexdigest()
+            while True:
+                data = fobj.read(64 * 1024)
+                if not data:
+                    break
+                hash_func.update(data)
+        result = hash_func.hexdigest()
     except (PermissionError, FileNotFoundError) as e:
         result = None
     except Exception as e:
