@@ -112,13 +112,15 @@ keep_list, delete_list = decider(hash_dict, delete_dirs)
 print("writing out results")
 extension = str(os.getpid())
 with open('keep.{}'.format(extension), 'x') as fobj:
-    fobj.write('\n'.join(keep_list))
-    fobj.write('\n')
+    fobj.writelines(("{}\n".format(line) for line in keep_list))
 
 with open('delete.{}'.format(extension), 'x') as fobj:
-    fobj.write('\n'.join(delete_list))
-    fobj.write('\n')
+    fobj.writelines(("{}\n".format(line) for line in delete_list))
 
 with open('error.{}'.format(extension), 'x') as fobj:
-    fobj.write('\n'.join(error_list))
-    fobj.write('\n')
+    fobj.writelines(("{}\n".format(line) for line in error_list))
+
+with open('hashes.{}'.format(extension), 'x') as fobj:
+    for file_hash, filenames in hash_dict.items():
+        fobj.writelines('{} {}\n'.format(file_hash, filename)
+                        for filename in filenames)
