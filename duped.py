@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import os
 import sys
+import errno
 from multiprocessing import cpu_count, Pool
 
 
@@ -78,6 +79,10 @@ args = parser.parse_args()
 if args.verbose:
     print(args)
 
+if not os.access('.', os.W_OK):
+    print("Error, no write access to current directory", file=sys.stderr)
+    sys.exit(errno.EACCES)
+
 directories = [os.path.normpath(directory) for directory in args.directories]
 delete_dirs = [os.path.normpath(directory) for directory in args.auto_delete]
 
@@ -118,3 +123,6 @@ with open('hashes.{}'.format(extension), 'x') as fobj:
     for file_hash, filenames in hash_dict.items():
         fobj.writelines('{} {}\n'.format(file_hash, filename)
                         for filename in filenames)
+
+with open('commandline.{}'.format(extension), 'x') as fobj:
+    fobj.write('{}\n'.format(args))
