@@ -4,7 +4,8 @@ import hashlib
 import os
 import sys
 import errno
-from multiprocessing import cpu_count, Pool
+from multiprocessing import cpu_count
+from concurrent.futures import ProcessPoolExecutor
 
 
 def hasher(filename):
@@ -88,10 +89,10 @@ delete_dirs = [os.path.normpath(directory) for directory in args.auto_delete]
 
 print("processing files")
 hash_dict, error_list = {}, []
-with Pool(processes=args.procs) as pool:
+with ProcessPoolExecutor(max_workers=args.procs) as executor:
     count = 0
     file_list = generate_file_list(directories, args.no_empty, args.skip)
-    for file_hash, filename in pool.imap_unordered(hasher, file_list, 10000):
+    for file_hash, filename in executor.map(hasher, file_list):
         if not file_hash:
             error_list.append(filename)
         hashes = hash_dict.setdefault(file_hash, [])
