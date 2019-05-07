@@ -90,13 +90,8 @@ print("processing files")
 hash_dict, error_list = {}, []
 with Pool(processes=args.procs) as pool:
     count = 0
-    for file_hash, filename in pool.imap_unordered(
-            hasher,
-            generate_file_list(
-                directories,
-                args.no_empty,
-                args.skip),
-            100):
+    file_list = generate_file_list(directories, args.no_empty, args.skip)
+    for file_hash, filename in pool.imap_unordered(hasher, file_list, 10000):
         if not file_hash:
             error_list.append(filename)
         hashes = hash_dict.setdefault(file_hash, [])
