@@ -29,7 +29,7 @@ def hasher(filename):
 def generate_file_list(directories, skip_empty, skip_dirs):
     for topdir in directories:
         for path, dirs, filenames in os.walk(
-                topdir, onerror=lambda e: print(e, file=sys.stderr)):
+                topdir.encode('utf-8'), onerror=lambda e: print(e, file=sys.stderr)):
             for directory in dirs:
                 if directory in skip_dirs:
                     del dirs[dirs.index(directory)]
