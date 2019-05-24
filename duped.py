@@ -9,6 +9,25 @@ from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor
 
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--no-empty', action='store_true', help="Skip empty files")
+    parser.add_argument('--skip', action='append', default=[],
+                        help="List of directory names to ignore")
+    parser.add_argument(
+        '--auto-delete', action='append', default=[],
+        help="List of directories to automatically delete duplicates from"
+    )
+    parser.add_argument('--procs', type=int, default=cpu_count(),
+                        help="Number of processes to use")
+    parser.add_argument('--verbose', action='store_true', help="Verbose mode")
+    parser.add_argument('directories', nargs='+')
+    args = parser.parse_args()
+    if args.verbose:
+        print(args)
+    return args
+
+
 def hasher(filename):
     hash_func = hashlib.md5()
     try:
@@ -65,25 +84,6 @@ def decider(hash_dict, auto_delete_list):
     return keep_list, del_list
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--no-empty', action='store_true', help="Skip empty files")
-    parser.add_argument('--skip', action='append', default=[],
-                        help="List of directory names to ignore")
-    parser.add_argument(
-        '--auto-delete', action='append', default=[],
-        help="List of directories to automatically delete duplicates from"
-    )
-    parser.add_argument('--procs', type=int, default=cpu_count(),
-                        help="Number of processes to use")
-    parser.add_argument('--verbose', action='store_true', help="Verbose mode")
-    parser.add_argument('directories', nargs='+')
-    args = parser.parse_args()
-    if args.verbose:
-        print(args)
-    return args
-
-
 def process_files(directories, args):
     hash_dict, error_list = {}, []
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
@@ -101,25 +101,31 @@ def process_files(directories, args):
 
 
 def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
-    extension = str(os.getpid())
-    with open('keep.{}'.format(extension), 'x') as fobj:
+    res_dir = os.path.join(os.getcwd(), '{}_{}'.format(
+        '{}_results'.format(os.path.splitext(sys.argv[0])[0]),
+        str(os.getpid())
+    ))
+    os.mkdir(res_dir)
+    print("writing results into {}".format(res_dir))
+
+    with open(os.path.join(res_dir, 'keep'), 'x') as fobj:
         fobj.writelines(("{}\n".format(line) for line in keep_list))
 
-    with open('delete.{}'.format(extension), 'x') as fobj:
+    with open(os.path.join(res_dir, 'delete'), 'x') as fobj:
         fobj.writelines(("{}\n".format(line) for line in delete_list))
 
-    with open('error.{}'.format(extension), 'x') as fobj:
+    with open(os.path.join(res_dir, 'error'), 'x') as fobj:
         fobj.writelines(("{}\n".format(line) for line in error_list))
 
-    with open('hashes.{}'.format(extension), 'x') as fobj:
+    with open(os.path.join(res_dir, 'hashes'), 'x') as fobj:
         for file_hash, filenames in hash_dict.items():
             fobj.writelines('{} {}\n'.format(file_hash, filename)
                             for filename in filenames)
 
-    with open('commandline.{}'.format(extension), 'x') as fobj:
+    with open(os.path.join(res_dir, 'commandline'), 'x') as fobj:
         fobj.write('{}\n'.format(args))
 
-    with open('runtime.{}'.format(extension), 'x') as fobj:
+    with open(os.path.join(res_dir, 'runtime'), 'x') as fobj:
         fobj.write('{}\n'.format(timings[1] - timings[0]))
 
 
@@ -143,7 +149,12 @@ keep_list, delete_list = decider(
         [os.path.normpath(directory) for directory in args.auto_delete]
     )
 
-timings = (start_time, time.perf_counter())
-
 print("writing out results")
-write_results(keep_list, delete_list, error_list, hash_dict, timings, args)
+write_results(
+        keep_list,
+        delete_list,
+        error_list,
+        hash_dict,
+        (start_time, time.perf_counter()),
+        args
+    )
