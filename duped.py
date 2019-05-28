@@ -6,7 +6,7 @@ import sys
 import errno
 import time
 from multiprocessing import cpu_count
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
 def parse_args():
@@ -89,13 +89,19 @@ def process_files(directories, args):
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
         count = 0
         file_list = generate_file_list(directories, args)
-        for file_hash, filename in executor.map(hasher, file_list):
-            if not file_hash:
-                error_list.append(filename)
-            hashes = hash_dict.setdefault(file_hash, [])
-            hashes.append(filename)
-            count += 1
-            print('\r{}'.format(count), end='', flush=True)
+        futures = (executor.submit(hasher, filename) for filename in file_list)
+        for future in as_completed(futures):
+            try:
+                file_hash, filename = future.result()
+                if not file_hash:
+                    error_list.append(filename)
+                    continue
+                hashes = hash_dict.setdefault(file_hash, [])
+                hashes.append(filename)
+                count += 1
+                print('\r{}'.format(count), end='', flush=True)
+            except Exception as e:
+                print(e)
         print()
     return hash_dict, error_list
 
