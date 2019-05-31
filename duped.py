@@ -51,14 +51,14 @@ def generate_file_list(directories, args):
         for path, dirs, filenames in os.walk(
                 topdir.encode('utf-8'), onerror=lambda e: print(e, file=sys.stderr)):
             for directory in dirs:
-                if directory in args.skip_dirs:
+                if directory in args.skip:
                     del dirs[dirs.index(directory)]
             for filename in filenames:
                 fullpath = os.path.join(path, filename)
                 if os.path.isfile(fullpath):
                     if os.path.islink(fullpath):
                         continue
-                    if args.skip_empty and os.path.getsize(fullpath) == 0:
+                    if args.no_empty and os.path.getsize(fullpath) == 0:
                         continue
                     yield fullpath
 
@@ -101,10 +101,8 @@ def process_files(directories, args):
 
 
 def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
-    res_dir = os.path.join(os.getcwd(), '{}_{}'.format(
-        '{}_results'.format(os.path.splitext(sys.argv[0])[0]),
-        str(os.getpid())
-    ))
+    res_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
+        os.path.splitext(sys.argv[0])[0], str(os.getpid())))
     os.mkdir(res_dir)
     print("writing results into {}".format(res_dir))
 
