@@ -46,19 +46,19 @@ def hasher(filename):
     return result, filename
 
 
-def generate_file_list(directories, skip_empty, skip_dirs):
+def generate_file_list(directories, args):
     for topdir in directories:
         for path, dirs, filenames in os.walk(
                 topdir.encode('utf-8'), onerror=lambda e: print(e, file=sys.stderr)):
             for directory in dirs:
-                if directory in skip_dirs:
+                if directory in args.skip_dirs:
                     del dirs[dirs.index(directory)]
             for filename in filenames:
                 fullpath = os.path.join(path, filename)
                 if os.path.isfile(fullpath):
                     if os.path.islink(fullpath):
                         continue
-                    if skip_empty and os.path.getsize(fullpath) == 0:
+                    if args.skip_empty and os.path.getsize(fullpath) == 0:
                         continue
                     yield fullpath
 
@@ -88,7 +88,7 @@ def process_files(directories, args):
     hash_dict, error_list = {}, []
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
         count = 0
-        file_list = generate_file_list(directories, args.no_empty, args.skip)
+        file_list = generate_file_list(directories, args)
         for file_hash, filename in executor.map(hasher, file_list):
             if not file_hash:
                 error_list.append(filename)
