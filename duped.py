@@ -85,28 +85,25 @@ def decider(hash_dict, auto_delete_list):
 
 
 def process_files(directories, args):
-    hash_dict, error_list = {}, []
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
-        count = 0
         file_list = generate_file_list(directories, args)
         futures = (executor.submit(hasher, filename) for filename in file_list)
         for future in as_completed(futures):
             try:
                 file_hash, filename = future.result()
-                if not file_hash:
-                    error_list.append(filename)
-                    continue
-                hashes = hash_dict.setdefault(file_hash, [])
-                hashes.append(filename)
-                count += 1
-                print('\r{}'.format(count), end='', flush=True)
+                if file_hash:
+                    yield (filename, file_hash)
             except Exception as e:
                 print(e)
-        print()
-    return hash_dict, error_list
 
 
-def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
+def record_hashes(store, filename, file_hash):
+    if file_hash:
+        existing_hash = store.setdefault(file_hash, [])
+        existing_hash.append(filename)
+
+
+def write_results(keep_list, delete_list, hash_dict, timings, args):
     res_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
         os.path.splitext(sys.argv[0])[0], str(os.getpid())))
     os.mkdir(res_dir)
@@ -117,9 +114,6 @@ def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
 
     with open(os.path.join(res_dir, 'delete'), 'x') as fobj:
         fobj.writelines(("{}\n".format(line) for line in delete_list))
-
-    with open(os.path.join(res_dir, 'error'), 'x') as fobj:
-        fobj.writelines(("{}\n".format(line) for line in error_list))
 
     with open(os.path.join(res_dir, 'hashes'), 'x') as fobj:
         for file_hash, filenames in hash_dict.items():
@@ -142,10 +136,17 @@ if not os.access('.', os.W_OK):
 start_time = time.perf_counter()
 
 print("processing files")
-hash_dict, error_list = process_files(
+hash_dict = {}
+
+count = 0
+for filename, file_hash in process_files(
         [os.path.normpath(directory) for directory in args.directories],
         args
-    )
+    ):
+    record_hashes(hash_dict, filename, file_hash)
+    count += 1
+    print('\r{}'.format(count), end='', flush=True)
+print()
 
 print("analyzing files")
 keep_list, delete_list = decider(
@@ -157,7 +158,6 @@ print("writing out results")
 write_results(
         keep_list,
         delete_list,
-        error_list,
         hash_dict,
         (start_time, time.perf_counter()),
         args
