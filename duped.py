@@ -91,19 +91,12 @@ def process_files(directories, args):
         for future in as_completed(futures):
             try:
                 file_hash, filename = future.result()
-                if file_hash:
-                    yield (filename, file_hash)
+                yield filename, file_hash
             except Exception as e:
                 print(e)
 
 
-def record_hashes(store, filename, file_hash):
-    if file_hash:
-        existing_hash = store.setdefault(file_hash, [])
-        existing_hash.append(filename)
-
-
-def write_results(keep_list, delete_list, hash_dict, timings, args):
+def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
     res_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
         os.path.splitext(sys.argv[0])[0], str(os.getpid())))
     os.mkdir(res_dir)
@@ -114,6 +107,9 @@ def write_results(keep_list, delete_list, hash_dict, timings, args):
 
     with open(os.path.join(res_dir, 'delete'), 'x') as fobj:
         fobj.writelines(("{}\n".format(line) for line in delete_list))
+
+    with open(os.path.join(res_dir, 'error'), 'x') as fobj:
+        fobj.writelines(("{}\n".format(line) for line in error_list))
 
     with open(os.path.join(res_dir, 'hashes'), 'x') as fobj:
         for file_hash, filenames in hash_dict.items():
@@ -136,14 +132,18 @@ if not os.access('.', os.W_OK):
 start_time = time.perf_counter()
 
 print("processing files")
-hash_dict = {}
+hash_dict, error_list = {}, []
 
 count = 0
 for filename, file_hash in process_files(
         [os.path.normpath(directory) for directory in args.directories],
         args
     ):
-    record_hashes(hash_dict, filename, file_hash)
+    if file_hash:
+        existing_hash = hash_dict.setdefault(file_hash, [])
+        existing_hash.append(filename)
+    else:
+        error_list.append(filename)
     count += 1
     print('\r{}'.format(count), end='', flush=True)
 print()
@@ -158,6 +158,7 @@ print("writing out results")
 write_results(
         keep_list,
         delete_list,
+        error_list,
         hash_dict,
         (start_time, time.perf_counter()),
         args
