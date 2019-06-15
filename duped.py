@@ -99,27 +99,25 @@ def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
     res_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
         os.path.splitext(sys.argv[0])[0], str(os.getpid())))
     os.mkdir(res_dir)
+
     print("writing results into {}".format(res_dir))
 
-    with open(os.path.join(res_dir, 'keep'), 'x') as fobj:
-        fobj.writelines(("{}\n".format(line) for line in keep_list))
+    files = (
+        ('keep', keep_list),
+        ('delete', delete_list),
+        ('error', error_list),
+        ('commandline', [args]),
+        ('runtime', [timings[1] - timings[0]]),
+    )
 
-    with open(os.path.join(res_dir, 'delete'), 'x') as fobj:
-        fobj.writelines(("{}\n".format(line) for line in delete_list))
-
-    with open(os.path.join(res_dir, 'error'), 'x') as fobj:
-        fobj.writelines(("{}\n".format(line) for line in error_list))
+    for filename, content in files:
+        with open(os.path.join(res_dir, filename), 'x') as fobj:
+            fobj.writelines(("{}\n".format(line) for line in content))
 
     with open(os.path.join(res_dir, 'hashes'), 'x') as fobj:
         for file_hash, filenames in hash_dict.items():
             fobj.writelines('{} {}\n'.format(file_hash, filename)
                             for filename in filenames)
-
-    with open(os.path.join(res_dir, 'commandline'), 'x') as fobj:
-        fobj.write('{}\n'.format(args))
-
-    with open(os.path.join(res_dir, 'runtime'), 'x') as fobj:
-        fobj.write('{}\n'.format(timings[1] - timings[0]))
 
 
 args = parse_args()
