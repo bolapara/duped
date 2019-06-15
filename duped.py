@@ -46,19 +46,19 @@ def hasher(filename):
     return result, filename
 
 
-def generate_file_list(directories, args):
+def generate_file_list(directories, skip_dirs, no_empty):
     for topdir in directories:
         for path, dirs, filenames in os.walk(
-                topdir.encode('utf-8'), onerror=lambda e: print(e, file=sys.stderr)):
+                topdir, onerror=lambda e: print(e, file=sys.stderr)):
             for directory in dirs:
-                if directory in args.skip:
+                if directory in skip_dirs:
                     del dirs[dirs.index(directory)]
             for filename in filenames:
                 fullpath = os.path.join(path, filename)
+                if os.path.islink(fullpath):
+                    continue
                 if os.path.isfile(fullpath):
-                    if os.path.islink(fullpath):
-                        continue
-                    if args.no_empty and os.path.getsize(fullpath) == 0:
+                    if no_empty and os.path.getsize(fullpath) == 0:
                         continue
                     yield fullpath
 
@@ -84,9 +84,8 @@ def decider(hash_dict, auto_delete_list):
     return keep_list, del_list
 
 
-def process_files(directories, args):
+def process_files(file_list):
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
-        file_list = generate_file_list(directories, args)
         futures = (executor.submit(hasher, filename) for filename in file_list)
         for future in as_completed(futures):
             try:
@@ -134,24 +133,29 @@ start_time = time.perf_counter()
 print("processing files")
 hash_dict, error_list = {}, []
 
+file_list = generate_file_list(
+    [os.path.abspath(directory).encode('utf-8') for directory in args.directories],
+    [directory.encode('utf-8') for directory in args.skip],
+    args.no_empty,
+)
+
 count = 0
-for filename, file_hash in process_files(
-        [os.path.normpath(directory) for directory in args.directories],
-        args
-    ):
-    if file_hash:
-        existing_hash = hash_dict.setdefault(file_hash, [])
-        existing_hash.append(filename)
-    else:
-        error_list.append(filename)
+for filename, file_hash in process_files(file_list):
     count += 1
     print('\r{}'.format(count), end='', flush=True)
+
+    if not file_hash:
+        error_list.append(filename)
+        continue
+
+    existing_hash = hash_dict.setdefault(file_hash, [])
+    existing_hash.append(filename)
 print()
 
 print("analyzing files")
 keep_list, delete_list = decider(
         hash_dict,
-        [os.path.normpath(directory) for directory in args.auto_delete]
+        [os.path.abspath(directory).encode('utf-8') for directory in args.auto_delete]
     )
 
 print("writing out results")
