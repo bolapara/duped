@@ -3,29 +3,32 @@ import argparse
 import hashlib
 import os
 import sys
-import errno
-import time
+import shelve
+import shlex
 from multiprocessing import cpu_count
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--no-empty', action='store_true', help="Skip empty files")
-    parser.add_argument('--skip', action='append', default=[],
-                        help="List of directory names to ignore")
-    parser.add_argument(
-        '--auto-delete', action='append', default=[],
-        help="List of directories to automatically delete duplicates from"
-    )
-    parser.add_argument('--procs', type=int, default=cpu_count(),
-                        help="Number of processes to use")
-    parser.add_argument('--verbose', action='store_true', help="Verbose mode")
-    parser.add_argument('directories', nargs='+')
-    args = parser.parse_args()
-    if args.verbose:
-        print(args)
-    return args
+class HashDB(object):
+    def __init__(self, filename):
+        self._hash_dict = shelve.open(filename, 'c')
+        self._error_list = []
+
+    def add(self, file_hash, filename):
+        existing_hash = self._hash_dict.setdefault(file_hash, [])
+        existing_hash.append(filename)
+        self._hash_dict[file_hash] = existing_hash
+
+    def export_dict(self):
+        return self._hash_dict
+
+    def export_hashes(self):
+        for file_hash, filenames in self._hash_dict.items():
+            for filename in filenames:
+                yield "{} {}".format(file_hash, filename.decode())
+
+    def export_errors(self):
+        return (line for line in self._error_list)
 
 
 def hasher(filename):
@@ -43,7 +46,7 @@ def hasher(filename):
     except Exception as e:
         print("Unhandled error: {}".format(e), file=sys.stderr)
         result = None
-    return result, filename
+    return filename, result
 
 
 def generate_file_list(directories, skip_dirs, no_empty):
@@ -54,114 +57,195 @@ def generate_file_list(directories, skip_dirs, no_empty):
                 if directory in skip_dirs:
                     del dirs[dirs.index(directory)]
             for filename in filenames:
-                fullpath = os.path.join(path, filename)
+                fullpath = os.path.abspath(os.path.join(path, filename))
+                # fullpath = os.path.join(path, filename)
                 if os.path.islink(fullpath):
                     continue
                 if os.path.isfile(fullpath):
-                    if no_empty and os.path.getsize(fullpath) == 0:
-                        continue
+                    try:
+                        if no_empty and os.path.getsize(fullpath) == 0:
+                            continue
+                    except Exception as e:
+                        pass
+                    assert type(fullpath) == bytes
                     yield fullpath
 
 
-def decider(hash_dict, auto_delete_list):
+def decider(hash_dict, delete_list):
     keep_list, del_list = [], []
     for files in hash_dict.values():
         new_delete_files, new_keep_files = [], []
         files.sort()
         if len(files) > 1:
-            for auto_delete_prefix in auto_delete_list:
+            for delete_prefix in delete_list:
                 new_delete_files.extend([
-                    filename for filename in files if filename.startswith(auto_delete_prefix)
+                    filename for filename in files if filename.startswith(delete_prefix)
                 ])
             new_keep_files = [
-                filename for filename in files if filename not in new_delete_files]
+                filename for filename in files if filename not in new_delete_files
+            ]
             if not new_keep_files:
                 new_keep_files.append(new_delete_files.pop())
         else:
-            new_keep_files.extend(files)
+            new_keep_files.extend([filename for filename in files])
         keep_list.extend(new_keep_files)
         del_list.extend(new_delete_files)
     return keep_list, del_list
 
 
-def process_files(file_list):
+def hash_files(file_list):
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
+
         futures = (executor.submit(hasher, filename) for filename in file_list)
         for future in as_completed(futures):
             try:
-                file_hash, filename = future.result()
-                yield filename, file_hash
+                yield future.result()
             except Exception as e:
                 print(e)
 
 
-def write_results(keep_list, delete_list, error_list, hash_dict, timings, args):
-    res_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
-        os.path.splitext(sys.argv[0])[0], str(os.getpid())))
-    os.mkdir(res_dir)
-
-    print("writing results into {}".format(res_dir))
-
+def write_results(keep_list, delete_list, error_list, hash_list, work_dir, args):
     files = (
         ('keep', keep_list),
         ('delete', delete_list),
         ('error', error_list),
-        ('commandline', [args]),
-        ('runtime', [timings[1] - timings[0]]),
     )
 
     for filename, content in files:
-        with open(os.path.join(res_dir, filename), 'x') as fobj:
-            fobj.writelines(("{}\n".format(line) for line in content))
+        with open(os.path.join(work_dir, filename), 'w') as fobj:
+            print(filename)
+            fobj.writelines(("{}\n".format(shlex.quote(line)) for line in content))
 
-    with open(os.path.join(res_dir, 'hashes'), 'x') as fobj:
-        for file_hash, filenames in hash_dict.items():
-            fobj.writelines('{} {}\n'.format(file_hash, filename)
-                            for filename in filenames)
+    with open(os.path.join(work_dir, 'commandline'), 'w') as fobj:
+            fobj.writelines("{}\n".format(line for line in [args]))
+
+
+def create_work_dir(base_path):
+    work_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
+        os.path.splitext(base_path)[0], str(os.getpid())))
+    os.mkdir(work_dir)
+
+    return work_dir
+
+
+def build(args):
+    skip = ['.git']
+    skip.extend(args.skip)
+
+    print("calculating file hashes")
+
+    file_list = generate_file_list(
+        set(os.path.abspath(directory).encode() for directory in args.directories),
+        set(directory.encode() for directory in skip),
+        args.no_empty,
+    )
+
+    # remove duplicates
+    file_set = set(file_list)
+
+    work_dir = create_work_dir(sys.argv[0])
+    hash_db = HashDB(os.path.join(work_dir, 'hash.db'))
+
+    count = 0
+    for filename, file_hash in hash_files(file_set):
+        if not filename or not file_hash:
+            print("Bug: filename: {} hash: {}".format(filename, hash))
+            continue
+        hash_db.add(file_hash, filename)
+        count += 1
+        if count % 10 == 0:
+            print('\r{}'.format(count), end='', flush=True)
+
+    print()
+    print("Working directory is {}".format(work_dir))
+
+
+def preprocess(hash_db, delete_list):
+    print("processing files")
+
+    keep_list, delete_list = decider(
+    hash_db.export_dict(),
+    set(os.path.abspath(directory).encode() for directory in delete_list)
+    )
+
+    return (x.decode() for x in keep_list), (x.decode() for x in delete_list)
+
+
+def process(args):
+    work_dir = args.work_dir
+    hash_db = HashDB(os.path.join(work_dir, 'hash.db'))
+
+    keep_list, delete_list = preprocess(hash_db, args.delete)
+
+    print("writing results into {}".format(work_dir))
+    write_results(
+            keep_list,
+            delete_list,
+            hash_db.export_errors(),
+            hash_db.export_hashes(),
+            work_dir,
+            args
+        )
+
+
+def delete(args):
+    work_dir = args.work_dir
+    hash_db = HashDB(os.path.join(work_dir, 'hash.db'))
+
+    _, delete_list = preprocess(hash_db, args.delete)
+
+    for filename in delete_list:
+        if args.verbose:
+            print(filename)
+        try:
+            os.remove(filename)
+        except Exception as e:
+            print("Error deleting {} ({})".format(filename, e))
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--verbose', action='store_true', help="Verbose mode")
+    subparsers = parser.add_subparsers()
+
+    build_cmd = subparsers.add_parser('build',
+        help="Build a database of files and their hashes"
+    )
+    build_cmd.add_argument(
+        '--procs', type=int, default=(cpu_count() - 1) or 1, help="Number of processes to use"
+    )
+    build_cmd.add_argument('--no-empty', action='store_true', help="Skip empty files")
+    build_cmd.add_argument(
+        '--skip', action='append', default=[], help="List of directory names to ignore"
+    )
+    build_cmd.add_argument('directories', type=str, nargs='+')
+    build_cmd.set_defaults(func=build)
+
+    process_cmd = subparsers.add_parser('process', 
+        help="Process list of directories and generate lists of files to keep or delete"
+    )
+    process_cmd.add_argument('--work_dir', type=str, required=True)
+    process_cmd.add_argument(
+        dest='delete', nargs='+', help="List of dirs to delete dupes from"
+    )
+    process_cmd.set_defaults(func=process)
+
+    delete_cmd = subparsers.add_parser('delete',
+        help="Process list of directories and delete duplicate files"
+    )
+    delete_cmd.add_argument('--work_dir', type=str, required=True)
+    delete_cmd.add_argument(
+        dest='delete', nargs='+', help="List of dirs to delete dupes from"
+    )
+    delete_cmd.set_defaults(func=delete)
+
+    args = parser.parse_args()
+
+    if args.verbose:
+        print(args)
+
+    return args
 
 
 args = parse_args()
-
-if not os.access('.', os.W_OK):
-    print("Error, no write access to current directory", file=sys.stderr)
-    sys.exit(errno.EACCES)
-
-start_time = time.perf_counter()
-
-print("processing files")
-hash_dict, error_list = {}, []
-
-file_list = generate_file_list(
-    [os.path.abspath(directory).encode('utf-8') for directory in args.directories],
-    [directory.encode('utf-8') for directory in args.skip],
-    args.no_empty,
-)
-
-count = 0
-for filename, file_hash in process_files(file_list):
-    count += 1
-    print('\r{}'.format(count), end='', flush=True)
-
-    if not file_hash:
-        error_list.append(filename)
-        continue
-
-    existing_hash = hash_dict.setdefault(file_hash, [])
-    existing_hash.append(filename)
-print()
-
-print("analyzing files")
-keep_list, delete_list = decider(
-        hash_dict,
-        [os.path.abspath(directory).encode('utf-8') for directory in args.auto_delete]
-    )
-
-print("writing out results")
-write_results(
-        keep_list,
-        delete_list,
-        error_list,
-        hash_dict,
-        (start_time, time.perf_counter()),
-        args
-    )
+args.func(args)
