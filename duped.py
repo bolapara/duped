@@ -25,7 +25,7 @@ class HashDB(object):
     def export_hashes(self):
         for file_hash, filenames in self._hash_dict.items():
             for filename in filenames:
-                yield "{} {}".format(file_hash, filename.decode())
+                yield f"{file_hash} {filename.decode()}"
 
     def export_errors(self):
         return (line for line in self._error_list)
@@ -44,7 +44,7 @@ def hasher(filename):
     except (PermissionError, FileNotFoundError) as e:
         result = None
     except Exception as e:
-        print("Unhandled error: {}".format(e), file=sys.stderr)
+        print(f"Unhandled error: {e}", file=sys.stderr)
         result = None
     return filename, result
 
@@ -112,17 +112,19 @@ def write_results(keep_list, delete_list, error_list, hash_list, work_dir, args)
     )
 
     for filename, content in files:
+        print(filename)
         with open(os.path.join(work_dir, filename), 'w') as fobj:
-            print(filename)
-            fobj.writelines(("{}\n".format(shlex.quote(line)) for line in content))
+            fobj.writelines((f"{shlex.quote(line)}\n" for line in content))
 
     with open(os.path.join(work_dir, 'commandline'), 'w') as fobj:
-            fobj.writelines("{}\n".format(line for line in [args]))
+        fobj.writelines(f"{line}\n" for line in [args])
 
 
 def create_work_dir(base_path):
-    work_dir = os.path.join(os.getcwd(), '{}_results_{}'.format(
-        os.path.splitext(base_path)[0], str(os.getpid())))
+    work_dir = os.path.join(
+        os.getcwd(),
+        f"{os.path.splitext(base_path)[0]}_results_{str(os.getpid())}"
+    )
     os.mkdir(work_dir)
 
     return work_dir
@@ -149,23 +151,23 @@ def build(args):
     count = 0
     for filename, file_hash in hash_files(file_set):
         if not filename or not file_hash:
-            print("Bug: filename: {} hash: {}".format(filename, hash))
+            print(f"Bug: filename: {filename} hash: {hash}")
             continue
         hash_db.add(file_hash, filename)
         count += 1
         if count % 10 == 0:
-            print('\r{}'.format(count), end='', flush=True)
+            print(f'\r{count}', end='', flush=True)
 
     print()
-    print("Working directory is {}".format(work_dir))
+    print(f"Working directory is {work_dir}")
 
 
 def preprocess(hash_db, delete_list):
     print("processing files")
 
     keep_list, delete_list = decider(
-    hash_db.export_dict(),
-    set(os.path.abspath(directory).encode() for directory in delete_list)
+        hash_db.export_dict(),
+        set(os.path.abspath(directory).encode() for directory in delete_list)
     )
 
     return (x.decode() for x in keep_list), (x.decode() for x in delete_list)
@@ -177,7 +179,7 @@ def process(args):
 
     keep_list, delete_list = preprocess(hash_db, args.delete)
 
-    print("writing results into {}".format(work_dir))
+    print(f"writing results into {work_dir}")
     write_results(
             keep_list,
             delete_list,
@@ -200,7 +202,7 @@ def delete(args):
         try:
             os.remove(filename)
         except Exception as e:
-            print("Error deleting {} ({})".format(filename, e))
+            print(f"Error deleting {filename} ({e})")
 
 
 def parse_args():
