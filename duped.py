@@ -58,16 +58,11 @@ def generate_file_list(directories, skip_dirs, no_empty):
                     del dirs[dirs.index(directory)]
             for filename in filenames:
                 fullpath = os.path.abspath(os.path.join(path, filename))
-                # fullpath = os.path.join(path, filename)
                 if os.path.islink(fullpath):
                     continue
                 if os.path.isfile(fullpath):
-                    try:
-                        if no_empty and os.path.getsize(fullpath) == 0:
-                            continue
-                    except Exception as e:
-                        pass
-                    assert type(fullpath) == bytes
+                    if no_empty and os.path.getsize(fullpath) == 0:
+                        continue
                     yield fullpath
 
 
@@ -134,7 +129,7 @@ def build(args):
     skip = ['.git']
     skip.extend(args.skip)
 
-    print("calculating file hashes")
+    print("generating file list")
 
     file_list = generate_file_list(
         set(os.path.abspath(directory).encode() for directory in args.directories),
@@ -146,7 +141,9 @@ def build(args):
     file_set = set(file_list)
 
     work_dir = create_work_dir(sys.argv[0])
-    hash_db = HashDB(os.path.join(work_dir, 'hash.db'))
+    hash_db = HashDB(os.path.join(work_dir, 'hash'))
+
+    print("calculating file hashes")
 
     count = 0
     for filename, file_hash in hash_files(file_set):
@@ -175,7 +172,7 @@ def preprocess(hash_db, delete_list):
 
 def process(args):
     work_dir = args.work_dir
-    hash_db = HashDB(os.path.join(work_dir, 'hash.db'))
+    hash_db = HashDB(os.path.join(work_dir, 'hash'))
 
     keep_list, delete_list = preprocess(hash_db, args.delete)
 
@@ -192,7 +189,7 @@ def process(args):
 
 def delete(args):
     work_dir = args.work_dir
-    hash_db = HashDB(os.path.join(work_dir, 'hash.db'))
+    hash_db = HashDB(os.path.join(work_dir, 'hash'))
 
     _, delete_list = preprocess(hash_db, args.delete)
 
