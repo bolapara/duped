@@ -153,7 +153,7 @@ def build(args):
     count = 0
     for filename, file_hash in hash_files(file_set):
         if not filename or not file_hash:
-            print(f"Bug: filename: {filename} hash: {hash}")
+            print(f"\nError with {filename.decode()} hash: {file_hash}")
             continue
         hash_db.add(file_hash, filename)
         count += 1
