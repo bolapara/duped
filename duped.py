@@ -246,5 +246,6 @@ def parse_args():
     return args
 
 
-args = parse_args()
-args.func(args)
+if __name__ == '__main__':
+    args = parse_args()
+    args.func(args)
