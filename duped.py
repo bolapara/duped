@@ -25,7 +25,7 @@ class HashDB(object):
     def export_hashes(self):
         for file_hash, filenames in self._hash_dict.items():
             for filename in filenames:
-                yield f"{file_hash} {filename.decode()}"
+                yield (file_hash, filename.decode())
 
     def export_errors(self):
         return (line for line in self._error_list)
@@ -109,10 +109,15 @@ def write_results(keep_list, delete_list, error_list, hash_list, work_dir, args)
     for filename, content in files:
         print(filename)
         with open(os.path.join(work_dir, filename), 'w') as fobj:
-            fobj.writelines((f"{shlex.quote(line)}\n" for line in content))
+            fobj.writelines(f"{shlex.quote(line)}\n" for line in content)
 
+    print('commandline')
     with open(os.path.join(work_dir, 'commandline'), 'w') as fobj:
-        fobj.writelines(f"{line}\n" for line in [args])
+        fobj.write(f"{args}\n")
+
+    print('hashes')
+    with open(os.path.join(work_dir, 'hashes'), 'w') as fobj:
+        fobj.writelines(f"{hashstr} {shlex.quote(filename)}\n" for hashstr, filename in hash_list)
 
 
 def create_work_dir(base_path):
